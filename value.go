@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/fnv"
+	"io"
 	"os"
 	"path"
 	"sync/atomic"
@@ -29,9 +30,25 @@ type (
 	// database. Each file is a chunk of the total database file and contains an array of twe types
 	// of data. The value itself (which is stored as a raw byte array) and a checksum for the value.
 	valueFile struct {
+		// FileId represents a unique identifier for this file. The id is globally unique and will
+		// not collide with any other value files.
 		FileId uint64
+
+		// Offset is used to keep track of the last index in the file that was written, each time a
+		// new value is written the offset is incremented before the value is actually written, this
+		// is to allocate more space for the file but also to allocate space for the value being
+		// written early. Because the offset is incremented atomically multiple writes can occur at
+		// the same time without conflicting. Each write will write to it's specific allocation in
+		// the file.
 		Offset uint64
-		File   *os.File
+
+		// File is a simple Writer and Reader At interface to support very fast random reads and
+		// fast concurrent writes. Right now this is an os.File but this could be replaced if it
+		// ever needed to be.
+		File interface {
+			io.WriterAt
+			io.ReaderAt
+		}
 	}
 )
 
@@ -42,9 +59,8 @@ func openValueFile(directory string, fileId uint64) (*valueFile, error) {
 	// Get an actual file path for the directory and the fileId specified.
 	filePath := path.Join(directory, getValueFileName(fileId))
 
-	// We want to be able to read/write the file, but our writes will be append only. If the file
-	// does not exist we want to create it.
-	flags := os.O_APPEND | os.O_CREATE | os.O_RDWR
+	// We want to be able to read/write the file. If the file does not exist we want to create it.
+	flags := os.O_CREATE | os.O_RDWR
 
 	// We are only appending to the file, and we want to be the only process with the file open.
 	// This might change later as it might prove to be more efficient to have a single writer and
@@ -148,8 +164,9 @@ func (f *valueFile) Write(value []byte) (uint64, error) {
 
 	checksum := h.Sum(nil)
 
+	v := append(value, checksum...)
 	// Write the value and checksum to the file at the calculated offset.
-	if n, err := f.File.WriteAt(append(value, checksum...), int64(offset)); err != nil {
+	if n, err := f.File.WriteAt(v, int64(offset)); err != nil {
 		return 0, err
 	} else if uint64(n) != size {
 		return 0, ErrIncompleteValue

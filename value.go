@@ -4,11 +4,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/fnv"
-	"io"
 	"os"
 	"path"
 	"sync"
 	"sync/atomic"
+)
+
+var (
+	// Make sure that the os.File struct implements the writer and reader at interfaces.
+	_ ReaderWriterAt = &os.File{}
 )
 
 var (
@@ -63,10 +67,7 @@ type (
 		// File is a simple Writer and Reader At interface to support very fast random reads and
 		// fast concurrent writes. Right now this is an os.File but this could be replaced if it
 		// ever needed to be.
-		File interface {
-			io.WriterAt
-			io.ReaderAt
-		}
+		File ReaderWriterAt
 	}
 )
 

@@ -3,9 +3,21 @@ package lsmtree
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"io"
 )
 
-type fileType byte
+type (
+	// fileType is a simple 1-Byte value that prefixes all of the file names to indicate the type of
+	// file that is being read/written.
+	fileType byte
+
+	// ReaderWriterAt is used as the interface for reading and writing data for the database. It can
+	// be used in nearly every IO portion of the database.
+	ReaderWriterAt interface {
+		io.ReaderAt
+		io.WriterAt
+	}
+)
 
 const (
 	// fileTypeManifest is used as a prefix to designate the manifest file. The manifest file

@@ -1,0 +1,64 @@
+package lsmtree
+
+type (
+	walTransactionChangeType byte
+
+	// walManager is a simple wrapper around the entire WAL concept. It manages writes to the WAL
+	// files as well as creating new segments. If needed it can also read writes back from a point
+	// in time.
+	walManager struct {
+		Directory string
+	}
+
+	// walSegment represents a single chunk of the entire WAL. This chunk is limited by file size
+	// and will only become larger than that file size if the last change persisted to it pushes it
+	// beyond that limit. This is to allow for values that might actually be larger than a single
+	// segment would normally allow.
+	walSegment struct {
+		// SegmentId represents the numeric progression of the WAL. This is an ascending value with
+		// the higher values being the most recent set of changes.
+		SegmentId uint64
+
+		// File is just an accessor for the actual data on the disk for the WAL segment.
+		File ReaderWriterAt
+	}
+
+	// walTransaction represents a single batch of changes that must be all committed to the state
+	// of the database, or none of them can be committed. The walTransaction should be suffixed with
+	// a checksum in the WAL file to make sure that the transaction is not corrupt if it needs to be
+	// read back.
+	walTransaction struct {
+		TransactionId uint64
+		Entries       []walTransactionChange
+	}
+
+	// walTransactionChange represents a single change made to the database state during a single
+	// transaction. It will indicate whether the pair is being set, or whether the key is being
+	// deleted from the store. If the key is being deleted then value will be nil and will not be
+	// encoded.
+	walTransactionChange struct {
+		// Type whether the pair is being set or deleted.
+		Type walTransactionChangeType
+
+		// Key is the unique identifier for tha pair. This key does not include the transactionId as
+		// wal entries do not need to be sorted except by the order the change was committed.
+		Key Key
+
+		// Value is the value we want to store in the database. This will be nil if we are deleting
+		// a key.
+		Value []byte
+	}
+)
+
+const (
+	// walTransactionChangeTypeSet indicates that the value is being set.
+	walTransactionChangeTypeSet walTransactionChangeType = iota
+
+	// walTransactionChangeTypeDelete indicates that the value is being deleted.
+	walTransactionChangeTypeDelete
+)
+
+// openWalSegment will open or create a wal segment file if it does not exist.
+func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {
+	panic("not implemented")
+}

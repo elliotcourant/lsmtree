@@ -12,7 +12,13 @@ type (
 	// files as well as creating new segments. If needed it can also read writes back from a point
 	// in time.
 	walManager struct {
+		// Directory is the folder where WAL files will be stored.
 		Directory string
+
+		// currentSegment is the WAL segment that is currently being used for all transactions. As
+		// transactions are committed there are appended here. Once this segment reaches a max size
+		// then a new segment will be created.
+		currentSegment *walSegment
 	}
 
 	// walSegment represents a single chunk of the entire WAL. This chunk is limited by file size
@@ -84,4 +90,19 @@ func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {
 		SegmentId: segmentId,
 		File:      file,
 	}, nil
+}
+
+// Append adds a transaction entry to the end of the WAL segment.
+func (w *walSegment) Append(txn walTransaction) error {
+	panic("not implemented")
+}
+
+// Sync will flush the changes made to the wal file to the disk if the file interface implements
+// the CanSync interface. If it does not then nothing happens and nil is returned.
+func (w *walSegment) Sync() error {
+	if canSync, ok := w.File.(CanSync); ok {
+		return canSync.Sync()
+	}
+
+	return nil
 }

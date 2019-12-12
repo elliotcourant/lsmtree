@@ -4,6 +4,15 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"io"
+	"os"
+)
+
+var (
+	// Make sure that the os.File struct implements the writer and reader at interfaces.
+	_ ReaderWriterAt = &os.File{}
+
+	// Make sure that the os.File struct implements the sync interface.
+	_ CanSync = &os.File{}
 )
 
 type (
@@ -16,6 +25,12 @@ type (
 	ReaderWriterAt interface {
 		io.ReaderAt
 		io.WriterAt
+	}
+
+	// CanSync is used to check if the current IO interface that a file wrapper is using has a
+	// method that allows its changes to be flushed to the disk.
+	CanSync interface {
+		Sync() error
 	}
 )
 

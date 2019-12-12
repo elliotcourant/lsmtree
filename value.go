@@ -11,11 +11,6 @@ import (
 )
 
 var (
-	// Make sure that the os.File struct implements the writer and reader at interfaces.
-	_ ReaderWriterAt = &os.File{}
-)
-
-var (
 	// ErrBadValueChecksum is returned when a value is read from the value file, but the checksum
 	// stored with the value does not match the calculated checksum of the value read. This is used
 	// as an indicator of file corruption.
@@ -194,4 +189,14 @@ func (f *valueFile) Write(value []byte) (uint64, error) {
 	// If everything has succeeded and the value has been written, then return the offset of the
 	// stored value.
 	return offset, nil
+}
+
+// Sync will flush the changes made to the value file to the disk if the file interface implements
+// the CanSync interface. If it does not then nothing happens and nil is returned.
+func (f *valueFile) Sync() error {
+	if canSync, ok := f.File.(CanSync); ok {
+		return canSync.Sync()
+	}
+
+	return nil
 }

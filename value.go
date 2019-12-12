@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync"
 	"sync/atomic"
 )
 
@@ -26,6 +27,23 @@ var (
 )
 
 type (
+	// valueManager wraps all of the value files and manages reads and writes of actual values.
+	valueManager struct {
+		// directory is the folder where all valueFiles will be stored.
+		directory string
+
+		// writeLocks are acquired while a readLock is still held. The read lock is then released.
+		// This ensures that two threads cannot try to write to the files map at the same time.
+		writeLock sync.Mutex
+
+		// readLock is to make sure that reads are not attempted while a change is being made to the
+		// file map. To modify the files map, a readLock and writeLock must be held.
+		readLock sync.RWMutex
+
+		// files is just a map of all of the valueFiles in memory by their fileId.
+		files map[uint64]*valueFile
+	}
+
 	// valueFile represents an append only file that is used to store actual values for the
 	// database. Each file is a chunk of the total database file and contains an array of twe types
 	// of data. The value itself (which is stored as a raw byte array) and a checksum for the value.

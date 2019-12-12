@@ -1,5 +1,10 @@
 package lsmtree
 
+import (
+	"os"
+	"path"
+)
+
 type (
 	walTransactionChangeType byte
 
@@ -60,5 +65,23 @@ const (
 
 // openWalSegment will open or create a wal segment file if it does not exist.
 func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {
-	panic("not implemented")
+	filePath := path.Join(directory, getWalSegmentFileName(segmentId))
+
+	// We want to be able to read/write the file. If the file does not exist we want to create it.
+	flags := os.O_CREATE | os.O_RDWR
+
+	// We are only appending to the file, and we want to be the only process with the file open.
+	// This might change later as it might prove to be more efficient to have a single writer and
+	// multiple readers for a single file.
+	mode := os.ModeAppend | os.ModeExclusive
+
+	file, err := os.OpenFile(filePath, flags, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	return &walSegment{
+		SegmentId: segmentId,
+		File:      file,
+	}, nil
 }

@@ -47,7 +47,29 @@ const (
 // following 8 bytes being the fileId.
 func getValueFileName(fileId uint64) string {
 	n := make([]byte, 9)
+
+	// The first byte of the filename is the fileTypeValue const.
 	n[0] = byte(fileTypeValue)
+
+	// The following 8 bytes is the fileId itself.
 	binary.BigEndian.PutUint64(n[1:], fileId)
+
+	// The plaintext filename is the hexadecimal encoding of the 9 bytes.
+	return hex.EncodeToString(n)
+}
+
+// getWalSegmentFileName returns a string representation of the WAL segment file name. The name is a
+// hexadecimal encoded byte array, with the first byte being the wal file type prefix and the
+// following 8 bytes being the segmentId.
+func getWalSegmentFileName(segmentId uint64) string {
+	n := make([]byte, 9)
+
+	// The first byte of the filename is the fileTypeWal const.
+	n[0] = byte(fileTypeWal)
+
+	// The following 8 bytes is the segmentId itself.
+	binary.BigEndian.PutUint64(n[1:], segmentId)
+
+	// The plaintext filename is the hexadecimal encoding of the 9 bytes.
 	return hex.EncodeToString(n)
 }

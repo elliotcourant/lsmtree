@@ -1,8 +1,11 @@
 package lsmtree
 
 import (
+	"encoding/binary"
+	"github.com/elliotcourant/buffers"
 	"os"
 	"path"
+	"sync/atomic"
 )
 
 type (
@@ -29,6 +32,10 @@ type (
 		// SegmentId represents the numeric progression of the WAL. This is an ascending value with
 		// the higher values being the most recent set of changes.
 		SegmentId uint64
+
+		// Offset represents the index that should be used for the next write to the WAL file.
+		// It is incremented using atomic operations to support concurrent writes.
+		Offset uint64
 
 		// File is just an accessor for the actual data on the disk for the WAL segment.
 		File ReaderWriterAt
@@ -86,15 +93,40 @@ func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {
 		return nil, err
 	}
 
+	// If we somehow cannot read the stat for the file then something is very wrong. We need to do
+	// this because we need to know what offset to start with when appending to the file.
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	return &walSegment{
 		SegmentId: segmentId,
+		Offset:    uint64(stat.Size()),
 		File:      file,
 	}, nil
 }
 
-// Append adds a transaction entry to the end of the WAL segment.
-func (w *walSegment) Append(txn walTransaction) error {
-	panic("not implemented")
+// Append adds a transaction entry to the end of the WAL segment. It will return the new size of the
+// current WAL segment to be used to determine if a new segment should be created.
+func (w *walSegment) Append(txn walTransaction) (totalSize uint64, err error) {
+	// Build the binary entry. Prefix it with a length that includes the 4 bytes for the length
+	// itself.
+	buf := append(make([]byte, 4), txn.Encode()...)
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+
+	// We now know how big the WAL entry will be on disk.
+	size := uint64(len(buf))
+
+	// We can then increment the WAL offset for the size of the entry, and then subtract the size to
+	// get the offset that we need to insert this entry to.
+	offset := atomic.AddUint64(&w.Offset, size) - size
+
+	// Write the data to the file. We don't need to have any logic here, we can simply return the
+	// err right away.
+	_, err = w.File.WriteAt(buf, int64(offset))
+
+	return offset + size, err
 }
 
 // Sync will flush the changes made to the wal file to the disk if the file interface implements
@@ -105,4 +137,38 @@ func (w *walSegment) Sync() error {
 	}
 
 	return nil
+}
+
+// Encode returns the binary representation of the walTransaction.
+// 1. 8 Bytes: Transaction ID
+// 2. 2 Bytes: Number Of Changes
+// 3. Repeated: walTransactionChange
+func (t *walTransaction) Encode() []byte {
+	buf := buffers.NewBytesBuffer()
+	buf.AppendUint64(t.TransactionId)
+	buf.AppendUint16(uint16(len(t.Entries)))
+	for _, change := range t.Entries {
+		buf.Append(change.Encode()...)
+	}
+
+	return buf.Bytes()
+}
+
+// Encode returns the binary representation of the walTransactionChange.
+// 1. 1 Byte: Change Type
+// 2. 4+ Bytes: Key
+// 3. 0-4+ Bytes: Value (If we are deleting then this is not included.
+func (c *walTransactionChange) Encode() []byte {
+	buf := buffers.NewBytesBuffer()
+	buf.AppendByte(byte(c.Type))
+	buf.Append(c.Key...)
+
+	switch c.Type {
+	// Right now only a set type will need the actual value. There might
+	// be others in the future that do or do not need the value stored.
+	case walTransactionChangeTypeSet:
+		buf.Append(c.Value...)
+	}
+
+	return buf.Bytes()
 }

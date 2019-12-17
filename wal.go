@@ -18,6 +18,10 @@ type (
 		// Directory is the folder where WAL files will be stored.
 		Directory string
 
+		// MaxWALSegmentSize is the largest a segment file is allowed to be grown to excluding the
+		// last transaction committed to it. (see Options)
+		MaxWALSegmentSize uint64
+
 		// currentSegment is the WAL segment that is currently being used for all transactions. As
 		// transactions are committed there are appended here. Once this segment reaches a max size
 		// then a new segment will be created.
@@ -75,6 +79,21 @@ const (
 	// walTransactionChangeTypeDelete indicates that the value is being deleted.
 	walTransactionChangeTypeDelete
 )
+
+// newWalManager will create the WAL manager object.
+func newWalManager(directory string, maxWalSegmentSize uint64) (*walManager, error) {
+	// Create/verify that the directory exists. If it does not exist then this will create it. If
+	// the dir does exist then nothing will happen here.
+	if err := newDirectory(directory); err != nil {
+		return nil, err
+	}
+
+	return &walManager{
+		Directory:         directory,
+		MaxWALSegmentSize: maxWalSegmentSize,
+		currentSegment:    nil,
+	}, nil
+}
 
 // openWalSegment will open or create a wal segment file if it does not exist.
 func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {

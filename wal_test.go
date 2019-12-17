@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestNewWalManager(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		dir, cleanup := NewTempDirectory(t)
+		defer cleanup()
+
+		manager, err := newWalManager(dir+"/wal", 1024*8)
+		assert.NoError(t, err)
+		assert.NotNil(t, manager)
+	})
+}
+
 func TestOpenWalSegment(t *testing.T) {
 	t.Run("directory doesnt exist", func(t *testing.T) {
 		file, err := openWalSegment("tmp", 1)

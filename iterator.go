@@ -1,12 +1,7 @@
 package lsmtree
 
-type Iterator interface {
+type Itr interface {
 	Seek(prefix []byte)
 	Next()
-	Item()
-}
-
-type Item interface {
-	Key() []byte
-	Value() []byte
+	Item() Item
 }

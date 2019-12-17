@@ -34,8 +34,8 @@ The goals of this library:
         - [ ] If a value is read during transaction X and that value changes _before_ transaction X
               is committed, then transaction X must fail due to a conflict. This is to make sure
               that changes made during X are not based off of stale data.
-    - [ ] A transaction can have multiple iterators. But writes during that transaction will not
-          be visible to existing iterators.
+    - [ ] A transaction can have multiple iterators. But writes that happen within the current
+          transaction _after_ an iterator has been created will be invisible to the iterator.
 - [ ] Multiple individual managed LSM-Trees (referred to as Tables).
     - [ ] Writes to any table is still written to a single WAL.
     - [ ] Reads can only target a single table.

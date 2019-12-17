@@ -62,12 +62,10 @@ const (
 func getPathExists(path string) bool {
 	// We can do this by getting the stat for the path specified. If we get a NotExist error then we
 	// know that the path is not valid.
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return false
-	}
+	_, err := os.Stat(path)
 
-	// If we didn't get an error then the path is valid.
-	return true
+	// Return the inverted value of IsNotExists.
+	return !os.IsNotExist(err)
 }
 
 // newDirectory will create a new directory at the path specified, including any missing directories

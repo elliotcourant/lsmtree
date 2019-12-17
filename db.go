@@ -7,16 +7,20 @@ type Options struct {
 	// WAL segment. If the last transaction puts the segment over this limit then it will still be
 	// appended (resulting in a large segment) but then a new segment will be created for subsequent
 	// transactions.
+	// Default is 8kb.
 	MaxWALSegmentSize uint64
 
 	// MaxValueChunkSize (in byteS) is the largest a single Value file will grow to before a new
 	// file is created. This does not include the last value appended to the value file.
+	// Default is 32kb.
 	MaxValueChunkSize uint64
 
 	// WALDirectory is the folder where WAL segment files will be stored.
+	// Default is db/wal.
 	WALDirectory string
 
 	// DataDirectory is the folder where heap and value files will be stored.
+	// Default is db/data.
 	DataDirectory string
 }
 

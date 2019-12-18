@@ -50,8 +50,24 @@ type (
 	// a checksum in the WAL file to make sure that the transaction is not corrupt if it needs to be
 	// read back.
 	walTransaction struct {
+		// TransactionId is the "timestamp" of the changes made.
 		TransactionId uint64
-		Entries       []walTransactionChange
+
+		// Timestamp is used for MVCC.
+		Timestamp uint64
+
+		// HeapId is used to determine where the keys for the batch have been stored. If this value
+		// is greater than 0 then the changes have been pushed to the heap file specified. But if
+		// the value is 0 then that means the keys have not yet been pushed to the disk.
+		HeapId uint64
+
+		// ValueFileId is used to determine where the values for this batch are stored. If this
+		// value is greater than 0 then the changes have been pushed to the value file specified. If
+		// the value is 0 then that means the values have not yet been flushed to the disk.
+		ValueFileId uint64
+
+		// Entries are all of the changes made to the database state during this batch.
+		Entries []walTransactionChange
 	}
 
 	// walTransactionChange represents a single change made to the database state during a single
@@ -148,6 +164,15 @@ func (w *walSegment) Append(txn walTransaction) (totalSize uint64, err error) {
 	return offset + size, err
 }
 
+// UpdateTransactionFlush will update the heapId and valueFileId's of the specified transaction
+// within the WAL segment. If the transaction could not be found then ok will be false. If the write
+// failed then an error will be returned. This will fsync the WAL segment.
+func (w *walSegment) UpdateTransactionFlush(transactionId, heapId, valueFileId uint64) (
+	ok bool, err error,
+) {
+	panic("not implemented")
+}
+
 // Sync will flush the changes made to the wal file to the disk if the file interface implements
 // the CanSync interface. If it does not then nothing happens and nil is returned.
 func (w *walSegment) Sync() error {
@@ -160,11 +185,17 @@ func (w *walSegment) Sync() error {
 
 // Encode returns the binary representation of the walTransaction.
 // 1. 8 Bytes: Transaction ID
-// 2. 2 Bytes: Number Of Changes
-// 3. Repeated: walTransactionChange
+// 2. 8 Bytes: Timestamp
+// 3. 8 Bytes: Heap ID
+// 4. 8 Bytes: Value File ID
+// 5. 2 Bytes: Number Of Changes
+// 6. Repeated: walTransactionChange
 func (t *walTransaction) Encode() []byte {
 	buf := buffers.NewBytesBuffer()
 	buf.AppendUint64(t.TransactionId)
+	buf.AppendUint64(t.Timestamp)
+	buf.AppendUint64(t.HeapId)
+	buf.AppendUint64(t.ValueFileId)
 	buf.AppendUint16(uint16(len(t.Entries)))
 	for _, change := range t.Entries {
 		buf.Append(change.Encode()...)

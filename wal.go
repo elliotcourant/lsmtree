@@ -9,6 +9,12 @@ import (
 )
 
 type (
+	walFile struct {
+		space freeSpace
+	}
+)
+
+type (
 	walTransactionChangeType byte
 
 	// walManager is a simple wrapper around the entire WAL concept. It manages writes to the WAL

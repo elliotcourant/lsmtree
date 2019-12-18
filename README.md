@@ -76,3 +76,11 @@ The goals of this library:
     - [ ] When the database is opened check the WAL index for the last items written to the disk. If
           there are items that have not been written to the disk yet then write them before building
           the memtables.
+          
+# Write Ahead Log
+
+The following diagram illustrates the desired format for the WAL file. When a new entry is added to
+the file it will be inserted into a free space starting at the end of the file and the transactionId
+along with the start and end offsets will be appended to the beginning of the file.
+
+![WAL File Layout](docs/walFileLayout.png "WAL File Layout")

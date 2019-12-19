@@ -26,21 +26,21 @@ func TestCombinedDelta(t *testing.T) {
 		fmt.Println(start, end)
 		fmt.Println("Space:", space.Space())
 
-		ok, headerOffset, dataOffset := space.Insert([]byte("test"), []byte("test"))
+		ok, headerOffset, dataOffset := space.Allocate([]byte("test"), []byte("test"))
 		fmt.Println(ok, headerOffset, dataOffset)
 
 		start, end = space.Current()
 		fmt.Println(start, end)
 		fmt.Println("Space:", space.Space())
 
-		ok, headerOffset, dataOffset = space.Insert([]byte("test1"), []byte("test"))
+		ok, headerOffset, dataOffset = space.Allocate([]byte("test1"), []byte("test"))
 		fmt.Println(ok, headerOffset, dataOffset)
 
 		start, end = space.Current()
 		fmt.Println(start, end)
 		fmt.Println("Space:", space.Space())
 
-		ok, headerOffset, dataOffset = space.Insert([]byte("test1"), []byte("test"))
+		ok, headerOffset, dataOffset = space.Allocate([]byte("test1"), []byte("test"))
 		fmt.Println(ok, headerOffset, dataOffset)
 
 		start, end = space.Current()

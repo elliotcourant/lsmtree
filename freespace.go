@@ -36,8 +36,17 @@ func newFreeSpaceFromBytes(data []byte) freeSpace {
 // where the data can be written.
 func (f *freeSpace) Allocate(header, data []byte) (ok bool, headerOffset, dataOffset int64) {
 	headerSize, dataSize := len(header), -len(data)
+
+	// Basically we are building a single uint64 value that will add to the first 4 bytes of the
+	// freeSpace value, and will subtract from the last 4 bytes. This allows us to keep track of two
+	// offsets within a single value atomically.
 	delta := uint64(headerSize)<<32 | (uint64(dataSize) & 0xffffffff) - 1<<32
+
+	// Once we have the delta we can add it to the current value to update the offsets. This will
+	// give us our new offsets that we can use.
 	result := atomic.AddUint64((*uint64)(f), delta)
+
+	// Split the uint64 back into two int32.
 	newStart, newEnd := int32(result>>32), int32(result)
 
 	// If we allocated too much then we need to deduct the allocation we just made.
@@ -46,6 +55,10 @@ func (f *freeSpace) Allocate(header, data []byte) (ok bool, headerOffset, dataOf
 		return false, 0, 0
 	}
 
+	// We need to subtract the headerSize from the start offset, this is because we added onto the
+	// start offset. We don't need to do anything with the end offset because its subtracted from
+	// the end of the file. So we can write forward from that offset without overwriting any other
+	// data.
 	return true, int64(newStart) - int64(headerSize), int64(newEnd)
 }
 

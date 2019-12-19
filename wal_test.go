@@ -18,7 +18,7 @@ func TestNewWalManager(t *testing.T) {
 
 func TestOpenWalSegment(t *testing.T) {
 	t.Run("directory doesnt exist", func(t *testing.T) {
-		file, err := openWalSegment("tmp", 1)
+		file, err := openWalSegment("tmp", 1, 1024)
 		assert.Error(t, err)
 		assert.Nil(t, file)
 	})
@@ -27,7 +27,7 @@ func TestOpenWalSegment(t *testing.T) {
 		dir, cleanup := NewTempDirectory(t)
 		defer cleanup()
 
-		file, err := openWalSegment(dir, 1)
+		file, err := openWalSegment(dir, 1, 1024)
 		assert.NoError(t, err)
 		assert.NotNil(t, file)
 	})
@@ -38,11 +38,11 @@ func TestWalSegment_Append(t *testing.T) {
 		dir, cleanup := NewTempDirectory(t)
 		defer cleanup()
 
-		file, err := openWalSegment(dir, 1)
+		file, err := openWalSegment(dir, 1, 1024)
 		assert.NoError(t, err)
 		assert.NotNil(t, file)
 
-		size, err := file.Append(walTransaction{
+		err = file.Append(walTransaction{
 			TransactionId: 12345,
 			Entries: []walTransactionChange{
 				{
@@ -62,7 +62,6 @@ func TestWalSegment_Append(t *testing.T) {
 			},
 		})
 		assert.NoError(t, err)
-		assert.Greater(t, size, uint64(0))
 	})
 }
 
@@ -71,11 +70,11 @@ func TestWalSegment_Sync(t *testing.T) {
 		dir, cleanup := NewTempDirectory(t)
 		defer cleanup()
 
-		file, err := openWalSegment(dir, 1)
+		file, err := openWalSegment(dir, 1, 1024)
 		assert.NoError(t, err)
 		assert.NotNil(t, file)
 
-		size, err := file.Append(walTransaction{
+		err = file.Append(walTransaction{
 			TransactionId: 12345,
 			Entries: []walTransactionChange{
 				{
@@ -95,7 +94,6 @@ func TestWalSegment_Sync(t *testing.T) {
 			},
 		})
 		assert.NoError(t, err)
-		assert.Greater(t, size, uint64(0))
 
 		err = file.Sync()
 		assert.NoError(t, err)

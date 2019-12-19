@@ -2,7 +2,18 @@ package lsmtree
 
 import (
 	"encoding/binary"
+	"errors"
 	"sync/atomic"
+)
+
+var (
+	// ErrCantReadFreeSpace is returned when a buffer has 8 bytes preceding it to indicate a
+	// freeSpace map, but the freeSpace map could not be read.
+	ErrCantReadFreeSpace = errors.New("could not read freeSpace")
+
+	// ErrInsufficientSpace is returned when a buffer does not have enough space to insert the data
+	// it is trying to allocate.
+	ErrInsufficientSpace = errors.New("insufficient free space")
 )
 
 type (

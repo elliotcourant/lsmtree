@@ -5,13 +5,6 @@ import (
 	"github.com/elliotcourant/buffers"
 	"os"
 	"path"
-	"sync/atomic"
-)
-
-type (
-	walFile struct {
-		space freeSpace
-	}
 )
 
 type (
@@ -43,9 +36,9 @@ type (
 		// the higher values being the most recent set of changes.
 		SegmentId uint64
 
-		// Offset represents the index that should be used for the next write to the WAL file.
-		// It is incremented using atomic operations to support concurrent writes.
-		Offset uint64
+		// Space is used to keep track of where data should be written as well as how much space is
+		// left in the file.
+		Space freeSpace
 
 		// File is just an accessor for the actual data on the disk for the WAL segment.
 		File ReaderWriterAt
@@ -118,7 +111,7 @@ func newWalManager(directory string, maxWalSegmentSize uint64) (*walManager, err
 }
 
 // openWalSegment will open or create a wal segment file if it does not exist.
-func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {
+func openWalSegment(directory string, segmentId uint64, size int32) (*walSegment, error) {
 	filePath := path.Join(directory, getWalSegmentFileName(segmentId))
 
 	// We want to be able to read/write the file. If the file does not exist we want to create it.
@@ -141,33 +134,67 @@ func openWalSegment(directory string, segmentId uint64) (*walSegment, error) {
 		return nil, err
 	}
 
+	var space freeSpace
+
+	// If the current file size less than or equal to 8 then we know it's a new file and we need to
+	// create the freeSpace map. This is because we should be allocating files of a size large
+	// enough to contain the map AND the data.
+	if stat.Size() <= 8 {
+		space = newFreeSpace(size)
+	} else {
+		spaceBytes := make([]byte, 8)
+		if n, err := file.ReadAt(spaceBytes, 0); err != nil {
+			return nil, err
+		} else if n < 8 {
+			return nil, ErrCantReadFreeSpace
+		}
+
+		space = newFreeSpaceFromBytes(spaceBytes)
+	}
+
 	return &walSegment{
 		SegmentId: segmentId,
-		Offset:    uint64(stat.Size()),
+		Space:     space,
 		File:      file,
 	}, nil
 }
 
-// Append adds a transaction entry to the end of the WAL segment. It will return the new size of the
-// current WAL segment to be used to determine if a new segment should be created.
-func (w *walSegment) Append(txn walTransaction) (totalSize uint64, err error) {
-	// Build the binary entry. Prefix it with a length that includes the 4 bytes for the length
-	// itself.
-	buf := append(make([]byte, 4), txn.Encode()...)
-	binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+// Append adds a transaction entry to the WAL segment. A transaction header is inserted at the top
+// of the file, and the transaction data is added to a buffer from the end of file. If the write is
+// successful then no error will be returned. If there is not enough space to write the transaction
+// to this WAL segment then ErrInsufficientSpace will be returned.
+func (w *walSegment) Append(txn walTransaction) (err error) {
+	// The header will always be 16 bytes and consists of a single 64 bit integer and two 32 bit
+	// integers.
+	header := make([]byte, 16)
 
-	// We now know how big the WAL entry will be on disk.
-	size := uint64(len(buf))
+	// Encode the transactions changes to be written to the file.
+	data := txn.Encode()
 
-	// We can then increment the WAL offset for the size of the entry, and then subtract the size to
-	// get the offset that we need to insert this entry to.
-	offset := atomic.AddUint64(&w.Offset, size) - size
+	// Allocate space for the item to be written to the WAL.
+	ok, headerOffset, dataOffset := w.Space.Allocate(header, data)
+	if !ok {
+		return ErrInsufficientSpace
+	}
 
-	// Write the data to the file. We don't need to have any logic here, we can simply return the
-	// err right away.
-	_, err = w.File.WriteAt(buf, int64(offset))
+	// The header will always be 16 bytes, it will contain the the TransactionId, and the start and
+	// end offsets for the actual transaction changes within the file.
+	binary.BigEndian.PutUint64(header[0:8], txn.TransactionId)
+	binary.BigEndian.PutUint32(header[8:12], uint32(dataOffset))
+	binary.BigEndian.PutUint32(header[12:16], uint32(dataOffset+int64(len(data))))
 
-	return offset + size, err
+	// Write the header to the file.
+	if _, err = w.File.WriteAt(header, headerOffset); err != nil {
+		return err
+	}
+
+	// Write the actual transaction data.
+	if _, err = w.File.WriteAt(data, dataOffset); err != nil {
+		return err
+	}
+
+	// Everything worked, we can return nil.
+	return nil
 }
 
 // UpdateTransactionFlush will update the heapId and valueFileId's of the specified transaction

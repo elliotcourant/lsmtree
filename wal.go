@@ -197,18 +197,70 @@ func (w *walSegment) Append(txn walTransaction) (err error) {
 	return nil
 }
 
-// UpdateTransactionFlush will update the heapId and valueFileId's of the specified transaction
+// UpdateTransaction will update the heapId and valueFileId's of the specified transaction
 // within the WAL segment. If the transaction could not be found then ok will be false. If the write
-// failed then an error will be returned. This will fsync the WAL segment.
-func (w *walSegment) UpdateTransactionFlush(transactionId, heapId, valueFileId uint64) (
+// failed then an error will be returned.
+func (w *walSegment) UpdateTransaction(transactionId, heapId, valueFileId uint64) (
 	ok bool, err error,
 ) {
-	panic("not implemented")
+	headerStart := int64(8)
+	headerEnd, _ := w.Space.Current()
+
+	headers := make([]byte, headerEnd-headerStart)
+
+	if _, err := w.File.ReadAt(headers, 8); err != nil {
+		return false, err
+	}
+
+	start := uint32(0)
+	for i := 0; i < len(headers); i += 16 {
+		txnId := binary.BigEndian.Uint64(headers[i : i+8])
+		if txnId != transactionId {
+			continue
+		}
+
+		// If the transactionIds match then we have found the transaction header with the pointer
+		// to the transaction data within the WAL file. Grab the next 4 bytes to get the start of
+		// the transaction data block.
+		start = binary.BigEndian.Uint32(headers[i+8 : i+8+4])
+
+		break
+	}
+
+	// If the start and the end are still 0 then the transaction specified is not in this segment.
+	if start == 0 {
+		return false, nil
+	}
+
+	// The heap and value file ids are a 16 byte pair that follows the 8 byte timestamp within a
+	// transaction change. So we can simply give it the start offset plus 8 bytes to change this
+	// block properly.
+	heapValueUpdate := make([]byte, 16)
+	binary.BigEndian.PutUint64(heapValueUpdate[0:8], heapId)
+	binary.BigEndian.PutUint64(heapValueUpdate[8:16], valueFileId)
+
+	// We can then write the heapId and valueFileId update to the file starting 8 bytes after the
+	// start offset we got from the header.
+	if _, err := w.File.WriteAt(heapValueUpdate, int64(start+8)); err != nil {
+		// Something went wrong writing to the file, we still want to return true to indicate that
+		// the transaction is in fact in this file, but that something is stopping the change from
+		// being made.
+		return true, err
+	}
+
+	// Everything worked, we can return true because we found the transaction.
+	return true, nil
 }
 
 // Sync will flush the changes made to the wal file to the disk if the file interface implements
 // the CanSync interface. If it does not then nothing happens and nil is returned.
 func (w *walSegment) Sync() error {
+	// Before syncing the file make sure to write the current freeSpace map to the
+	// file as well.
+	if _, err := w.File.WriteAt(w.Space.Encode(), 0); err != nil {
+		return err
+	}
+
 	if canSync, ok := w.File.(CanSync); ok {
 		return canSync.Sync()
 	}
@@ -217,15 +269,13 @@ func (w *walSegment) Sync() error {
 }
 
 // Encode returns the binary representation of the walTransaction.
-// 1. 8 Bytes: Transaction ID
-// 2. 8 Bytes: Timestamp
-// 3. 8 Bytes: Heap ID
-// 4. 8 Bytes: Value File ID
-// 5. 2 Bytes: Number Of Changes
-// 6. Repeated: walTransactionChange
+// 1. 8 Bytes: Timestamp
+// 2. 8 Bytes: Heap ID
+// 3. 8 Bytes: Value File ID
+// 4. 2 Bytes: Number Of Changes
+// 5. Repeated: walTransactionChange
 func (t *walTransaction) Encode() []byte {
 	buf := buffers.NewBytesBuffer()
-	buf.AppendUint64(t.TransactionId)
 	buf.AppendUint64(t.Timestamp)
 	buf.AppendUint64(t.HeapId)
 	buf.AppendUint64(t.ValueFileId)

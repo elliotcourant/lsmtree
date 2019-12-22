@@ -224,7 +224,7 @@ func (w *walSegment) UpdateTransaction(transactionId, heapId, valueFileId uint64
 
 	// We can then write the heapId and valueFileId update to the file starting 8 bytes after the
 	// start offset we got from the header.
-	if _, err := w.File.WriteAt(heapValueUpdate, int64(start+8)); err != nil {
+	if _, err := w.File.WriteAt(heapValueUpdate, start+8); err != nil {
 		// Something went wrong writing to the file, we still want to return true to indicate that
 		// the transaction is in fact in this file, but that something is stopping the change from
 		// being made.

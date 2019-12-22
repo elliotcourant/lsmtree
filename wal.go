@@ -203,32 +203,15 @@ func (w *walSegment) Append(txn walTransaction) (err error) {
 func (w *walSegment) UpdateTransaction(transactionId, heapId, valueFileId uint64) (
 	ok bool, err error,
 ) {
-	headerStart := int64(8)
-	headerEnd, _ := w.Space.Current()
+	start := int64(0)
 
-	headers := make([]byte, headerEnd-headerStart)
-
-	if _, err := w.File.ReadAt(headers, 8); err != nil {
-		return false, err
-	}
-
-	start := uint32(0)
-	for i := 0; i < len(headers); i += 16 {
-		txnId := binary.BigEndian.Uint64(headers[i : i+8])
-		if txnId != transactionId {
-			continue
-		}
-
-		// If the transactionIds match then we have found the transaction header with the pointer
-		// to the transaction data within the WAL file. Grab the next 4 bytes to get the start of
-		// the transaction data block.
-		start = binary.BigEndian.Uint32(headers[i+8 : i+8+4])
-
-		break
+	ok, start, _, err = w.getTransactionDataLocation(transactionId)
+	if err != nil {
+		return ok, err
 	}
 
 	// If the start and the end are still 0 then the transaction specified is not in this segment.
-	if start == 0 {
+	if start == 0 || !ok {
 		return false, nil
 	}
 
@@ -266,6 +249,30 @@ func (w *walSegment) Sync() error {
 	}
 
 	return nil
+}
+
+func (w *walSegment) getTransactionDataLocation(txnId uint64) (ok bool, start, end int64, err error) {
+	headerStart := int64(8)
+	headerEnd, _ := w.Space.Current()
+	headers := make([]byte, headerEnd-headerStart)
+	if _, err := w.File.ReadAt(headers, headerStart); err != nil {
+		return false, 0, 0, err
+	}
+
+	for i := 0; i < len(headers); i += 16 {
+		transactionId := binary.BigEndian.Uint64(headers[i : i+8])
+		if txnId != transactionId {
+			continue
+		}
+
+		ok = true
+		start = int64(binary.BigEndian.Uint32(headers[i+8 : i+8+4]))
+		end = int64(binary.BigEndian.Uint32(headers[i+8+4 : i+8+4+4]))
+
+		return
+	}
+
+	return
 }
 
 // GetTransactions will return an array of transactions and their changes in the order that they

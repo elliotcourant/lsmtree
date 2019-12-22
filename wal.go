@@ -268,6 +268,39 @@ func (w *walSegment) Sync() error {
 	return nil
 }
 
+// GetTransactions will return an array of transactions and their changes in the order that they
+// were written to the WAL.
+func (w *walSegment) GetTransactions() ([]walTransaction, error) {
+	headerStart := int64(8)
+	headerEnd, _ := w.Space.Current()
+
+	headers := make([]byte, headerEnd-headerStart)
+	if _, err := w.File.ReadAt(headers, headerStart); err != nil {
+		return nil, err
+	}
+
+	transactions := make([]walTransaction, 0)
+	for i := 0; i < len(headers); i += 16 {
+		transactionId := binary.BigEndian.Uint64(headers[i : i+8])
+		start := binary.BigEndian.Uint32(headers[i+8 : i+8+4])
+		end := binary.BigEndian.Uint32(headers[i+8+4 : i+8+4+4])
+		transaction := &walTransaction{
+			TransactionId: transactionId,
+		}
+
+		changeBuffer := make([]byte, end-start)
+		if _, err := w.File.ReadAt(changeBuffer, int64(start)); err != nil {
+			return nil, err
+		}
+
+		transaction.Decode(changeBuffer)
+
+		transactions = append(transactions, *transaction)
+	}
+
+	return transactions, nil
+}
+
 // Encode returns the binary representation of the walTransaction.
 // 1. 8 Bytes: Timestamp
 // 2. 8 Bytes: Heap ID
@@ -287,6 +320,22 @@ func (t *walTransaction) Encode() []byte {
 	return buf.Bytes()
 }
 
+func (t *walTransaction) Decode(src []byte) {
+	buf := buffers.NewBytesReader(src)
+	t.Timestamp = buf.NextUint64()
+	t.HeapId = buf.NextUint64()
+	t.ValueFileId = buf.NextUint64()
+
+	numberOfEntries := int(buf.NextUint16())
+	t.Entries = make([]walTransactionChange, numberOfEntries)
+
+	for i := 0; i < numberOfEntries; i++ {
+		change := &walTransactionChange{}
+		change.Decode(buf.NextBytes())
+		t.Entries[i] = *change
+	}
+}
+
 // Encode returns the binary representation of the walTransactionChange.
 // 1. 1 Byte: Change Type
 // 2. 4+ Bytes: Key
@@ -304,4 +353,15 @@ func (c *walTransactionChange) Encode() []byte {
 	}
 
 	return buf.Bytes()
+}
+
+func (c *walTransactionChange) Decode(src []byte) {
+	buf := buffers.NewBytesReader(src)
+	c.Type = walTransactionChangeType(buf.NextByte())
+	c.Key = buf.NextBytes()
+
+	switch c.Type {
+	case walTransactionChangeTypeSet:
+		c.Value = buf.NextBytes()
+	}
 }
